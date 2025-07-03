@@ -1068,8 +1068,8 @@
                 animate();
 
                 document.body.appendChild(ARButton.createButton(renderer, {
-                    requiredFeatures: ['hit-test', 'anchors', 'cloud-anchors'], // cloud-anchorsを追加
-                    optionalFeatures: ['dom-overlay'],
+                    requiredFeatures: ['hit-test', 'anchors'], // cloud-anchorsを追加
+                    optionalFeatures: ['cloud-anchors','dom-overlay'],
                     domOverlay: { root: document.querySelector("#overlay") }
                 }));
             }
