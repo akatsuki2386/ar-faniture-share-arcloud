@@ -600,14 +600,6 @@
         <h1>AR家具配置<br>シミュレーション</h1>
     </div>
 
-    <div id="sharing-ui" style="position: absolute; top: 120px; left: 50%; transform: translateX(-50%); z-index: 10; display: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; text-align: center;">
-        <button id="host-button" style="padding: 10px;">共有を開始</button>
-        <div id="join-section" style="margin-top: 10px;">
-            <input type="text" id="anchor-id-input" placeholder="共有IDを入力">
-            <button id="join-button" style="padding: 10px;">参加</button>
-        </div>
-        <p id="info-text" style="margin-top: 10px;"></p>
-    </div>
     <div id="ios-ar-container">
         <h2>表示したい家具を選んでください</h2>
         <div id="ios-ar-links">
@@ -615,7 +607,14 @@
     </div>
     
     <div id="overlay">
-        
+        <div id="sharing-ui" style="position: absolute; top: 120px; left: 50%; transform: translateX(-50%); z-index: 10; display: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; text-align: center;">
+            <button id="host-button" style="padding: 10px;">共有を開始</button>
+            <div id="join-section" style="margin-top: 10px;">
+                <input type="text" id="anchor-id-input" placeholder="共有IDを入力">
+                <button id="join-button" style="padding: 10px;">参加</button>
+            </div>
+            <p id="info-text" style="margin-top: 10px;"></p>
+        </div>
         <div id="help-modal">
             <div id="help-content-container">
                 <button id="close-help-button">&times;</button>
