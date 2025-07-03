@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <title>AR家具配置アプリ</title>
     
-    <meta name="google-signin-client_id" content=" ">
+    <meta name="google-signin-client_id" content="YOUR_CLIENT_ID">
     <meta name="google-signin-scope" content="https://www.googleapis.com/auth/xreal.spatial_perception">
     <meta name="google-signin-cookiepolicy" content="single_host_origin">
-    <meta name="google-api-key" content="AIzaSyD4-wwm-g-zmz8t_OhAZ8X8G4VqTwLOyo8">
+    <meta name="google-api-key" content="ここに取得したAPIキーを貼り付け">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { 
@@ -1037,12 +1037,10 @@
                     initializeARExperience();
                     preloadModels();
                     
-                    // ▼▼▼ 共有機能初期化 ▼▼▼
-                    sharingUI.style.display = 'block'; // 共有UIを表示
+                    sharingUI.style.display = 'block';
                     const session = renderer.xr.getSession();
 
                     try {
-                        // Cloud Anchor機能が使えるように設定
                         await session.updateWorldSensingState({
                             worldSensingEnabled: true,
                             meshDetectionEnabled: false,
@@ -1052,10 +1050,10 @@
                         console.error("World Sensingの更新に失敗:", error);
                         infoText.textContent = '共有機能の初期化に失敗しました。';
                     }
-                    // ▲▲▲ 共有機能初期化 ▲▲▲
                 });
 
                 renderer.xr.addEventListener('sessionend', () => {
+                    sharingUI.style.display = 'none';
                     document.getElementById('title-container').style.display = 'block';
                     resetScene();
                     document.getElementById('exit-ar-button').style.display = 'none';
@@ -1066,15 +1064,19 @@
                 
                 animate();
 
-                document.body.appendChild(ARButton.createButton(renderer, {
-                    requiredFeatures: ['hit-test', 'anchors','cloud-anchors'], // cloud-anchorsを追加
+                const arButton = ARButton.createButton(renderer, {
+                    requiredFeatures: ['hit-test', 'anchors', 'cloud-anchors'],
                     optionalFeatures: ['dom-overlay'],
-                    domOverlay: { root: document.querySelector("#overlay") }
-                }));
+                    domOverlay: { root: document.querySelector("#overlay") },
+                    // ▼▼▼ エラー表示用のコールバックを追加 ▼▼▼
+                    onSessionFailed: function (error) {
+                        alert("ARセッションの開始に失敗しました。エラー: " + error.message);
+                        console.error("AR session failed to start", error);
+                    }
+                });
+                document.body.appendChild(arButton);
             }
             
-            // ▼▼▼ 共有機能メインロジック ▼▼▼
-            // 「共有を開始」ボタンの処理
             hostButton.onclick = async () => {
                 if (!reticle.visible) {
                     infoText.textContent = '床を認識させてから押してください。';
@@ -1087,10 +1089,8 @@
 
                 try {
                     infoText.textContent = 'アンカーを作成中...';
-                    // レティクルの位置にアンカーを作成
                     const anchor = await frame.createAnchor(new XRRigidTransform(reticle.position, reticle.quaternion));
 
-                    // 作成したアンカーをクラウドに公開（ホスト）
                     cloudAnchor = await anchor.publish();
                     const anchorId = cloudAnchor.id;
 
@@ -1098,7 +1098,6 @@
                     console.log(`Cloud Anchor ID: ${anchorId}`);
                     alert(`共有ID: ${anchorId}\nこのIDを他の人に伝えてください。`);
                     
-                    // UIを更新
                     hostButton.style.display = 'none';
                     document.getElementById('join-section').style.display = 'none';
 
@@ -1108,7 +1107,6 @@
                 }
             };
 
-            // 「参加」ボタンの処理
             joinButton.onclick = async () => {
                 const anchorId = anchorIdInput.value;
                 if (!anchorId) {
@@ -1121,18 +1119,14 @@
                 try {
                     infoText.textContent = 'セッションを検索中... 周囲をスキャンしてください。';
                     
-                    // IDを使ってクラウドアンカーを解決（リゾルブ）
                     cloudAnchor = await session.resolveCloudAnchor(anchorId);
                     
-                    // アンカーが解決できたら、シーン全体の親となるオブジェクトをアンカーに追従させる
                     const worldOrigin = new THREE.Object3D();
                     worldOrigin.position.copy(cloudAnchor.transform.position);
                     worldOrigin.quaternion.copy(cloudAnchor.transform.quaternion);
-                    // 本来は、以降のオブジェクトをこのworldOriginの子として追加していく
                     
                     infoText.textContent = 'セッションに参加しました！';
                     
-                    // UIを更新
                     hostButton.style.display = 'none';
                     document.getElementById('join-section').style.display = 'none';
 
@@ -1141,7 +1135,6 @@
                     infoText.textContent = 'エラーが発生しました。';
                 }
             };
-            // ▲▲▲ 共有機能メインロジック ▲▲▲
 
             function initializeARExperience() {
                 reticle = new THREE.Mesh( 
