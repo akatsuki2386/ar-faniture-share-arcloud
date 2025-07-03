@@ -4,12 +4,11 @@
     <meta charset="UTF-8">
     <title>AR家具配置アプリ</title>
     
-    <meta name="google-signin-client_id" content="AIzaSyD4-wwm-g-zmz8t_OhAZ8X8G4VqTwLOyo8">
+    <meta name="google-signin-client_id" content="YOUR_CLIENT_ID">
     <meta name="google-signin-scope" content="https://www.googleapis.com/auth/xreal.spatial_perception">
     <meta name="google-signin-cookiepolicy" content="single_host_origin">
-    <meta name="google-api-key" content="AIzaSyD4-wwm-g-zmz8t_OhAZ8X8G4VqTwLOyo8">
+    <meta name="google-api-key" content="ここに取得したAPIキーを貼り付け">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    
     <style>
         body { 
             margin: 0;
@@ -542,7 +541,7 @@
         }
         #close-modal-button {
             position: absolute;
-            bottom: -70px; /* ▼▼▼ 修正: -70pxから-85pxへ ▼▼▼ */
+            bottom: -70px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(255,255,255,0.2);
@@ -601,6 +600,14 @@
         <h1>AR家具配置<br>シミュレーション</h1>
     </div>
 
+    <div id="sharing-ui" style="position: absolute; top: 120px; left: 50%; transform: translateX(-50%); z-index: 10; display: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; text-align: center;">
+        <button id="host-button" style="padding: 10px;">共有を開始</button>
+        <div id="join-section" style="margin-top: 10px;">
+            <input type="text" id="anchor-id-input" placeholder="共有IDを入力">
+            <button id="join-button" style="padding: 10px;">参加</button>
+        </div>
+        <p id="info-text" style="margin-top: 10px;"></p>
+    </div>
     <div id="ios-ar-container">
         <h2>表示したい家具を選んでください</h2>
         <div id="ios-ar-links">
@@ -837,7 +844,7 @@
                     <button id="close-modal-button">&times;</button>
                 </div>
                 <div id="furniture-grid">
-                    </div>
+                </div>
             </div>
         </div>
 
@@ -879,10 +886,19 @@
             let tabButtons, helpPages;
             let confirmDialog, objectPendingDeletion = null;
 
+            // ▼▼▼ 共有機能用変数 ▼▼▼
+            let cloudAnchor = null;
+            const sharingUI = document.getElementById('sharing-ui');
+            const hostButton = document.getElementById('host-button');
+            const joinButton = document.getElementById('join-button');
+            const anchorIdInput = document.getElementById('anchor-id-input');
+            const infoText = document.getElementById('info-text');
+            // ▲▲▲ 共有機能用変数 ▲▲▲
+
             const furnitureData = [
-                { name: 'イス',   file: 'chair.glb',     height: 0.79, thumbnail: 'chair.png' },
-                { name: '本棚',   file: 'bookshelf.glb', height: 1.8,  thumbnail: 'bookshelf.png' }, 
-                { name: '脚立',   file: 'stand.glb',     height: 1.2,  thumbnail: 'stand.png' }, 
+                { name: 'イス',   file: 'chair.glb',      height: 0.79, thumbnail: 'chair.png' },
+                { name: '本棚',   file: 'bookshelf.glb',  height: 1.8,  thumbnail: 'bookshelf.png' }, 
+                { name: '脚立',   file: 'stand.glb',      height: 1.2,  thumbnail: 'stand.png' }, 
             ];
             let currentFurniture = furnitureData[0];
             let previewObject = null;
@@ -1014,13 +1030,30 @@
                 document.getElementById('rotate-left-button').innerHTML = rotateLeftIconSVG;
                 document.getElementById('rotate-right-button').innerHTML = rotateRightIconSVG;
 
-                renderer.xr.addEventListener('sessionstart', () => {
+                renderer.xr.addEventListener('sessionstart', async () => {
                     document.getElementById('title-container').style.display = 'none';
                     resetScene();
                     isEditMode = true; 
                     updateUI();
                     initializeARExperience();
                     preloadModels();
+                    
+                    // ▼▼▼ 共有機能初期化 ▼▼▼
+                    sharingUI.style.display = 'block'; // 共有UIを表示
+                    const session = renderer.xr.getSession();
+
+                    try {
+                        // Cloud Anchor機能が使えるように設定
+                        await session.updateWorldSensingState({
+                            worldSensingEnabled: true,
+                            meshDetectionEnabled: false,
+                            planeDetectionEnabled: true
+                        });
+                    } catch(error) {
+                        console.error("World Sensingの更新に失敗:", error);
+                        infoText.textContent = '共有機能の初期化に失敗しました。';
+                    }
+                    // ▲▲▲ 共有機能初期化 ▲▲▲
                 });
 
                 renderer.xr.addEventListener('sessionend', () => {
@@ -1035,11 +1068,81 @@
                 animate();
 
                 document.body.appendChild(ARButton.createButton(renderer, {
-                    requiredFeatures: ['hit-test'],
+                    requiredFeatures: ['hit-test', 'anchors', 'cloud-anchors'], // cloud-anchorsを追加
                     optionalFeatures: ['dom-overlay'],
                     domOverlay: { root: document.querySelector("#overlay") }
                 }));
             }
+            
+            // ▼▼▼ 共有機能メインロジック ▼▼▼
+            // 「共有を開始」ボタンの処理
+            hostButton.onclick = async () => {
+                if (!reticle.visible) {
+                    infoText.textContent = '床を認識させてから押してください。';
+                    return;
+                }
+
+                const session = renderer.xr.getSession();
+                const frame = renderer.xr.getFrame();
+                const referenceSpace = renderer.xr.getReferenceSpace();
+
+                try {
+                    infoText.textContent = 'アンカーを作成中...';
+                    // レティクルの位置にアンカーを作成
+                    const anchor = await frame.createAnchor(new XRRigidTransform(reticle.position, reticle.quaternion));
+
+                    // 作成したアンカーをクラウドに公開（ホスト）
+                    cloudAnchor = await anchor.publish();
+                    const anchorId = cloudAnchor.id;
+
+                    infoText.textContent = `共有ID: ${anchorId}`;
+                    console.log(`Cloud Anchor ID: ${anchorId}`);
+                    alert(`共有ID: ${anchorId}\nこのIDを他の人に伝えてください。`);
+                    
+                    // UIを更新
+                    hostButton.style.display = 'none';
+                    document.getElementById('join-section').style.display = 'none';
+
+                } catch (error) {
+                    console.error('アンカーのホストに失敗しました:', error);
+                    infoText.textContent = 'エラーが発生しました。';
+                }
+            };
+
+            // 「参加」ボタンの処理
+            joinButton.onclick = async () => {
+                const anchorId = anchorIdInput.value;
+                if (!anchorId) {
+                    infoText.textContent = '共有IDを入力してください。';
+                    return;
+                }
+
+                const session = renderer.xr.getSession();
+
+                try {
+                    infoText.textContent = 'セッションを検索中... 周囲をスキャンしてください。';
+                    
+                    // IDを使ってクラウドアンカーを解決（リゾルブ）
+                    cloudAnchor = await session.resolveCloudAnchor(anchorId);
+                    
+                    // アンカーが解決できたら、シーン全体の親となるオブジェクトをアンカーに追従させる
+                    const worldOrigin = new THREE.Object3D();
+                    worldOrigin.position.copy(cloudAnchor.transform.position);
+                    worldOrigin.quaternion.copy(cloudAnchor.transform.quaternion);
+                    // 本来は、以降のオブジェクトをこのworldOriginの子として追加していく
+                    
+                    infoText.textContent = 'セッションに参加しました！';
+                    
+                    // UIを更新
+                    hostButton.style.display = 'none';
+                    document.getElementById('join-section').style.display = 'none';
+
+                } catch (error) {
+                    console.error('アンカーの解決に失敗しました:', error);
+                    infoText.textContent = 'エラーが発生しました。';
+                }
+            };
+            // ▲▲▲ 共有機能メインロジック ▲▲▲
 
             function initializeARExperience() {
                 reticle = new THREE.Mesh( 
@@ -1681,7 +1784,7 @@
                 renderer.setAnimationLoop(render);
             }
 
-            function render() {
+            function render(timestamp, frame) {
                 const elapsedTime = clock.getElapsedTime();
 
                 for (let i = objectsToDelete.length - 1; i >= 0; i--) {
@@ -1716,8 +1819,7 @@
                 let isPlaceable = false;
                 const activeObject = (appState === 'PLACING') ? previewObject : selectedObject;
 
-                if (renderer.xr.getFrame()) {
-                    const frame = renderer.xr.getFrame();
+                if (frame) {
                     const referenceSpace = renderer.xr.getReferenceSpace();
                     if (hitTestSource) {
                         const hitTestResults = frame.getHitTestResults(hitTestSource);
@@ -1768,14 +1870,17 @@
                                 crossMark.visible = false;
                             }
                         } else {
-                            isPlaceable = false;
                             if(reticle) reticle.visible = false;
                             crossMark.visible = false;
-                            if (activeObject) activeObject.visible = false;
-                            if (instructionText.style.display !== 'block' && !isFloorDetected) {
-                                instructionText.style.display = 'block';
-                                startDotAnimation();
-                            }
+                        }
+                    } else {
+                        isPlaceable = false;
+                        if(reticle) reticle.visible = false;
+                        crossMark.visible = false;
+                        if (activeObject) activeObject.visible = false;
+                        if (instructionText.style.display !== 'block' && !isFloorDetected) {
+                            instructionText.style.display = 'block';
+                            startDotAnimation();
                         }
                     }
                 }
@@ -1806,4 +1911,3 @@
     </script>
 </body>
 </html>
-
